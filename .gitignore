@@ -1,0 +1,28 @@
+# CareNest Mobile Inference Engine
+llama.cpp/
+
+# macOS
+.DS_Store
+
+# Android
+**/*.iml
+**/*.xml
+**/local.properties
+**/bin/
+**/gen/
+**/out/
+**/test-results/
+**/build/
+
+# Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+android/app/src/main/jniLibs/
