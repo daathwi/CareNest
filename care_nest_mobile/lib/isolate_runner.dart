@@ -169,8 +169,9 @@ const String _systemPrompt =
     "   - PATHS: Create ONLY linear, strictly vertical paths: S1[...] --> S2[...] --> S3[...]\n"
     "   - NO HORIZONTAL BRANCHING: If multiple options exist, list them in a vertical sequence or use multiple flowcharts.\n"
     "2. TABLES: Use Markdown tables for comparing medications, symptoms, or reference values.\n"
-    "3. FORMATTING: Use H2 and H3 headers for clinical sections. Use ⚠️ for critical safety warnings.\n"
-    "Output raw Markdown only. Ensure nodes are vertical and labels are descriptive.<end_of_turn>\n\n";
+    "3. FORMATTING: Use Markdown headers (e.g. ## for Clinical Sections, ### for sub-sections). NEVER write the text 'H1' or 'H2' at the start of a line.\n"
+    "4. SAFETY: Always include a ⚠️ Critical Safety section at the end of every report.\n"
+    "Output raw Markdown. Use ## and ### only.<end_of_turn>\n\n";
 
 // Compatibility helper to keep main.dart working for now
 Future<Stream<dynamic>> runLlamaStreaming(String prompt, String modelPath) async {

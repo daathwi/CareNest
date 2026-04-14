@@ -654,6 +654,11 @@ class _ChatScreenState extends State<ChatScreen> {
         return "${match.group(1)}$id[$label]";
       });
 
+      // FALLBACK: Convert literal "H2 " or "H3 " to Markdown hashtags
+      l = l.replaceFirst(RegExp(r'^H1\s+', caseSensitive: false), '# ');
+      l = l.replaceFirst(RegExp(r'^H2\s+', caseSensitive: false), '## ');
+      l = l.replaceFirst(RegExp(r'^H3\s+', caseSensitive: false), '### ');
+
       // CLEANUP: Strip forbidden shapes for medical consistency
       l = l.replaceAll('{', '[').replaceAll('}', ']').replaceAll('(', '[').replaceAll(')', ']');
       
