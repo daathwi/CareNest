@@ -9,7 +9,8 @@ CareNest is a production-grade medical investigative tool designed for professio
 CareNest rejects the "chat bubble" paradigm in favor of **investigative reporting**. It treats every interaction as a clinical consultation, producing structured Markdown documents with embedded diagnostic paths and high-fidelity medical tables.
 
 ## 🚀 Key Features
-- **Local-First Inference**: Powered by a custom `llama.cpp` native FFI layer optimized for the **Snapdragon 8 Gen 2**.
+- **Local-First Inference**: Powered by a custom `llama.cpp` native FFI layer optimized for high-performance ARMv8-A processors.
+- **8GB RAM Requirement**: Engineered for devices with 8GB+ RAM to ensure stable local inference.
 - **Clinical Dashboard**: A clean, full-width UI built for maximum readability and zero-distraction medical investigative work.
 - **Diagnostic Flowcharts**: Dynamic rendering of vertical Mermaid diagrams for visualizing clinical paths and symptom logic.
 - **Wide-Column Data**: Professional rendering of complex medical reference tables with horizontal scrolling and fixed-width columns.
@@ -31,7 +32,8 @@ Ensure your development environment meets these requirements:
 - **Flutter SDK**: `^3.11.4`
 - **Android NDK**: `25.x` or higher
 - **CMake**: `3.22.1`+ (for native compilation)
-- **Device**: Android device with 8GB+ RAM recommended (optimized for Snapdragon 8 Gen 2).
+- **Device**: Android device with **at least 8GB RAM** is strictly required for stable generation.
+- **Stability Note**: High memory spikes during inference can trigger the Android Low Memory Killer (LMK). We recommend disabling "Battery Optimization" for CareNest and closing background apps for the best performance.
 
 ### 2. Native Library Preparation
 Before running the Flutter app, you must compile the native `llama.cpp` wrapper. 
