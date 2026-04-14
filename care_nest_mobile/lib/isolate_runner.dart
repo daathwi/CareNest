@@ -1,5 +1,4 @@
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'llama_service.dart';
 
 class InferenceMetrics {
@@ -28,31 +27,31 @@ class InferenceMetrics {
 // It gets cached in the KV cache once, and never re-processed.
 const String _systemPrompt =
     "<start_of_turn>user\n"
-    "You are CareNest, a medical assistant.\n"
-    "If enough detail is given, respond with:\n"
-    "1. Short overview (3 sentences)\n"
-    "2. Markdown table: 4 rows max\n"
-    "3. Precautions: 3 bullets, flag urgent with ⚠️\n"
-    "Be concise. and no Robotic headers - always answer in Markdown format\n\n";
+    "You are CareNest, a helpful and precise medical assistant. Respond in Markdown.\n"
+    "1. Use standard Markdown formatting with headers, bullet points, bold text, and italics where appropriate.\n"
+    "2. FLOWCHARTS: For any step-by-step process, include a Mermaid diagram. ALWAYS wrap it in ```mermaid ... ```. Use `flowchart TD`.\n"
+    "   CRITICAL NODE RULES - follow exactly:\n"
+    "   - Nodes MUST have a unique ID followed by a label in square brackets: S1[Clinical Step]\n"
+    "   - NEVER omit the ID: WRONG: [Patient presents]; CORRECT: P1[Patient presents]\n"
+    "   - NEVER use curly braces {} or round brackets ().\n"
+    "   - Connections are ONLY top-to-bottom vertical: S1 --> S2 --> S3\n"
+    "   - NEVER branch left or right. Only one path, straight down.\n"
+    "   - CORNER CASE: Ensure IDs have no spaces. Use CamelCase or underscores for IDs.\n"
+    "   CORRECT example: Init[Patient presents] --> Assessment[Assess symptoms] --> Labs[Run blood tests] --> Dx[Diagnose condition]\n"
+    "3. TABLES: For comparisons, use Markdown tables. Keep content concise per cell.\n"
+    "4. PRECAUTIONS: List urgent safety points with ⚠️.\n"
+    "Output raw Markdown only. ALWAYS use ID[Label] for flowchart nodes. NEVER branch horizontally.<end_of_turn>\n\n";
 
 Future<Stream<dynamic>> runLlamaStreaming(
   String prompt,
   String modelPath,
-  String projectorPath, {
-  List<Uint8List>? imagesData,
-  List<int>? widths,
-  List<int>? heights,
-}) async {
+) async {
   final receivePort = ReceivePort();
 
   await Isolate.spawn(_entry, {
     "prompt": prompt,
     "modelPath": modelPath,
-    "projectorPath": projectorPath,
     "sendPort": receivePort.sendPort,
-    "imagesData": imagesData,
-    "widths": widths,
-    "heights": heights,
   });
 
   bool isFirstToken = true;
@@ -87,21 +86,12 @@ Future<Stream<dynamic>> runLlamaStreaming(
 void _entry(Map args) {
   final String userInput = args["prompt"];
   final String modelPath = args["modelPath"];
-  final String projectorPath = args["projectorPath"];
   final SendPort sendPort = args["sendPort"];
-  final List<Uint8List>? imagesData = args["imagesData"];
-  final List<int>? widths = args["widths"];
-  final List<int>? heights = args["heights"];
-
-  String mediaTags = "";
-  if (imagesData != null) {
-    mediaTags = List.filled(imagesData.length, "<__media__>\n").join("");
-  }
 
   // The user message is the ONLY thing that gets prefilled each turn.
   // The system prompt is already cached in the KV cache.
   final String userPrompt =
-      "$mediaTags$userInput<end_of_turn>\n"
+      "$userInput<end_of_turn>\n"
       "<start_of_turn>model\n";
 
   final overallWatch = Stopwatch()..start();
@@ -109,15 +99,10 @@ void _entry(Map args) {
 
   try {
     final llama = LlamaService();
-    llama.loadModel(modelPath, projectorPath);
+    llama.loadModel(modelPath);
 
     // Cache system prompt in KV once (no-op if already cached)
     llama.warmupSystemPrompt(_systemPrompt);
-
-    // Inject Images if present
-    if (imagesData != null && widths != null && heights != null) {
-      llama.setImages(imagesData, widths, heights);
-    }
 
     // Only the user message gets prefilled — system prompt KV is reused
     if (!llama.setPrompt(userPrompt)) {

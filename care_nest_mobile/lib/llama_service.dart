@@ -2,17 +2,11 @@ import 'dart:ffi';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
-typedef InitModelNative = Void Function(Pointer<Utf8>, Pointer<Utf8>);
-typedef InitModelDart = void Function(Pointer<Utf8>, Pointer<Utf8>);
+typedef InitModelNative = Void Function(Pointer<Utf8>);
+typedef InitModelDart = void Function(Pointer<Utf8>);
 
 typedef FreeResultNative = Void Function(Pointer<Utf8>);
 typedef FreeResultDart = void Function(Pointer<Utf8>);
-
-typedef ClearImagesNative = Void Function();
-typedef ClearImagesDart = void Function();
-
-typedef AddImageNative = Int32 Function(Pointer<Uint8>, Int32, Int32);
-typedef AddImageDart = int Function(Pointer<Uint8>, int, int);
 
 typedef LoadPromptNative = Int32 Function(Pointer<Utf8>);
 typedef LoadPromptDart = int Function(Pointer<Utf8>);
@@ -26,8 +20,6 @@ typedef GenerateTokenDart = Pointer<Utf8> Function();
 class LlamaService {
   late DynamicLibrary dylib;
   late InitModelDart initModel;
-  late ClearImagesDart clearImages;
-  late AddImageDart addImage;
   late LoadPromptDart loadPrompt;
   late CacheSystemPromptDart cacheSystemPrompt;
   late GenerateTokenDart generateToken;
@@ -49,20 +41,16 @@ class LlamaService {
     dylib = DynamicLibrary.open("libwrapper.so");
 
     initModel = dylib.lookupFunction<InitModelNative, InitModelDart>("init_model");
-    clearImages = dylib.lookupFunction<ClearImagesNative, ClearImagesDart>("clear_images");
-    addImage = dylib.lookupFunction<AddImageNative, AddImageDart>("add_image");
     loadPrompt = dylib.lookupFunction<LoadPromptNative, LoadPromptDart>("load_prompt");
     cacheSystemPrompt = dylib.lookupFunction<CacheSystemPromptNative, CacheSystemPromptDart>("cache_system_prompt");
     generateToken = dylib.lookupFunction<GenerateTokenNative, GenerateTokenDart>("generate_token");
     freeResult = dylib.lookupFunction<FreeResultNative, FreeResultDart>("free_result");
   }
 
-  void loadModel(String modelPath, String projectorPath) {
+  void loadModel(String modelPath) {
     final mPathPtr = modelPath.toNativeUtf8();
-    final pPathPtr = projectorPath.toNativeUtf8();
-    initModel(mPathPtr, pPathPtr);
+    initModel(mPathPtr);
     malloc.free(mPathPtr);
-    malloc.free(pPathPtr);
   }
 
   /// Pre-cache system prompt in KV cache. Call once after loadModel.
@@ -73,24 +61,7 @@ class LlamaService {
     return result == 0;
   }
 
-  // Clears and sequentially sends multiple RGB pixel sets to the C++ vector
-  bool setImages(List<Uint8List> imagesData, List<int> widths, List<int> heights) {
-    if (imagesData.isEmpty) return true;
-    
-    clearImages();
-    bool allSuccess = true;
-    
-    for (int i = 0; i < imagesData.length; i++) {
-        final rgbData = imagesData[i];
-        final ptr = malloc<Uint8>(rgbData.length);
-        ptr.asTypedList(rgbData.length).setAll(0, rgbData);
-        final result = addImage(ptr, widths[i], heights[i]);
-        malloc.free(ptr);
-        if (result == 0) allSuccess = false;
-    }
-    
-    return allSuccess;
-  }
+
 
   // Prepares the prompt. Returns true if successful.
   bool setPrompt(String prompt) {
@@ -106,6 +77,7 @@ class LlamaService {
     if (ptr == nullptr) return null;
     
     final token = ptr.toDartString();
+    freeResult(ptr);
     return token;
   }
 }

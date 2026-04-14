@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'dart:typed_data';
 import 'isolate_runner.dart';
-import 'vision_service.dart';
 import 'services/download_service.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter_mermaid/flutter_mermaid.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:google_fonts/google_fonts.dart';
@@ -30,22 +27,28 @@ class CareNestApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF006D5B), // Primary Medical Teal
+          seedColor: const Color(0xFF006D5B),
           brightness: Brightness.light,
+          primary: const Color(0xFF006D5B),
           surface: const Color(0xFFFFFFFF),
-          background: const Color(0xFFF9FAFB),
+          background: const Color(0xFFF8FAFC),
         ),
-        textTheme: GoogleFonts.outfitTextTheme(Theme.of(context).textTheme).copyWith(
-          bodyLarge: GoogleFonts.outfit(color: const Color(0xFF1E293B)),
-          bodyMedium: GoogleFonts.outfit(color: const Color(0xFF334155)),
+        textTheme: GoogleFonts.outfitTextTheme().copyWith(
+          displayLarge: GoogleFonts.outfit(fontSize: 32, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B), letterSpacing: -1.0),
+          headlineMedium: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w700, color: const Color(0xFF1E293B)),
+          titleLarge: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B)),
+          bodyLarge: GoogleFonts.outfit(fontSize: 17, height: 1.6, color: const Color(0xFF334155), letterSpacing: 0.2),
+          bodyMedium: GoogleFonts.outfit(fontSize: 15, height: 1.5, color: const Color(0xFF475569)),
+          labelSmall: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w800, color: const Color(0xFF64748B), letterSpacing: 1.2),
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF9FAFB),
+        appBarTheme: AppBarTheme(
+          backgroundColor: const Color(0xFFF8FAFC),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
-          iconTheme: IconThemeData(color: Color(0xFF1E293B)),
+          centerTitle: false,
+          titleTextStyle: GoogleFonts.outfit(color: const Color(0xFF1E293B), fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5),
         ),
       ),
       home: isReady 
@@ -76,7 +79,7 @@ class CustomTableBuilder extends MarkdownElementBuilder {
             for (var th in tr.children ?? []) {
               headerWidgets.add(Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(th.textContent, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
+                child: Text(th.textContent, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B))),
               ));
             }
           }
@@ -89,7 +92,7 @@ class CustomTableBuilder extends MarkdownElementBuilder {
             for (var td in tr.children ?? []) {
               rowCells.add(Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(td.textContent, style: const TextStyle(fontSize: 13, color: Color(0xFF475569))),
+                child: Text(td.textContent, style: const TextStyle(fontSize: 15, color: Color(0xFF475569))),
               ));
             }
             if (rowCells.isNotEmpty) rowWidgets.add(rowCells);
@@ -98,28 +101,58 @@ class CustomTableBuilder extends MarkdownElementBuilder {
       }
     }
     
-    if (headerWidgets.isEmpty && rowWidgets.isNotEmpty) return const SizedBox();
+    // Build a data model first so we can calculate fixed column widths
+    final int colCount = headerWidgets.isEmpty ? 0 : headerWidgets.length;
+    if (colCount == 0 && rowWidgets.isNotEmpty) return const SizedBox();
+    if (headerWidgets.isEmpty && rowWidgets.isEmpty) return const SizedBox();
+
+    const double colWidth = 160.0;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 24),
+      margin: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       clipBehavior: Clip.antiAlias,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Table(
-          defaultColumnWidth: const IntrinsicColumnWidth(),
-          border: TableBorder.symmetric(inside: const BorderSide(color: Color(0xFFF1F5F9), width: 1)),
+          defaultColumnWidth: const FixedColumnWidth(colWidth),
+          border: TableBorder(
+            horizontalInside: BorderSide(color: const Color(0xFFE2E8F0).withOpacity(0.6), width: 0.5),
+            verticalInside: BorderSide(color: const Color(0xFFE2E8F0).withOpacity(0.6), width: 0.5),
+          ),
           children: [
-            TableRow(
-              decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
-              children: headerWidgets,
-            ),
-            ...rowWidgets.map((row) => TableRow(children: row)),
+            if (headerWidgets.isNotEmpty)
+              TableRow(
+                decoration: const BoxDecoration(color: Color(0xFFF1F5F9)),
+                children: headerWidgets.map((w) => SizedBox(
+                  width: colWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: w,
+                  ),
+                )).toList(),
+              ),
+            ...rowWidgets.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final row = entry.value;
+              return TableRow(
+                decoration: BoxDecoration(
+                  color: idx % 2 == 1 ? const Color(0xFFF8FAFC) : Colors.white,
+                ),
+                children: row.map((w) => SizedBox(
+                  width: colWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: w,
+                  ),
+                )).toList(),
+              );
+            }),
           ],
         ),
       ),
@@ -132,21 +165,40 @@ class CustomBlockquoteBuilder extends MarkdownElementBuilder {
   Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFE0F2F1).withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF006D5B).withOpacity(0.3)),
+        color: const Color(0xFF006D5B).withOpacity(0.04),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+          topLeft: Radius.circular(4),
+          bottomLeft: Radius.circular(4),
+        ),
+        border: const Border(
+          left: BorderSide(color: Color(0xFF006D5B), width: 4),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFF006D5B), size: 20),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF006D5B).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.tips_and_updates_rounded, color: Color(0xFF006D5B), size: 14),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Text(
               element.textContent,
-              style: const TextStyle(color: Color(0xFF006D5B), height: 1.5, fontSize: 13),
+              style: GoogleFonts.outfit(
+                color: const Color(0xFF193A36),
+                height: 1.6,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -158,14 +210,12 @@ class Message {
   final String text;
   final bool isUser;
   bool isStreaming;
-  final List<Uint8List>? images;
   Map<String, dynamic>? metrics;
 
   Message({
     required this.text, 
     required this.isUser, 
     this.isStreaming = false,
-    this.images,
     this.metrics,
   });
 }
@@ -181,15 +231,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Message> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  final VisionService _visionService = VisionService();
   final DownloadService _downloadService = DownloadService();
   
   String? _modelPath;
-  String? _projectorPath;
   bool _isLoadingModel = true;
-  bool _isScanning = false;
   Map<String, dynamic>? _lastMetrics;  
-  List<VisionResult> _selectedImages = [];
 
   @override
   void initState() {
@@ -200,13 +246,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _initModel() async {
     try {
       final mPath = await _downloadService.getModelPath();
-      final pPath = await _downloadService.getProjectorPath();
       setState(() {
         _modelPath = mPath;
-        _projectorPath = pPath;
         _isLoadingModel = false;
         _messages.add(Message(
-          text: "CareNest Pro active. I can now see and analyze medical images and reports directly using Gemma 4.",
+          text: "CareNest active. I'm ready for your medical queries.",
           isUser: false,
         ));
       });
@@ -230,49 +274,16 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _handleImagePick(ImageSource source) async {
-    if (_selectedImages.length >= 3) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("You can attach only max 3 files only", style: TextStyle(color: Colors.white)),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isScanning = true);
-    
-    final result = await _visionService.pickAndProcessImage(
-      source: source,
-      totalAttachments: _selectedImages.length + 1
-    );
-    
-    setState(() {
-      _isScanning = false;
-      if (result != null) {
-        _selectedImages.add(result);
-      }
-    });
-  }
-
   void _handleSend(String text) async {
-    if (text.trim().isEmpty && _selectedImages.isEmpty) return;
-    if (_modelPath == null || _projectorPath == null) return;
-
-    final imagesToDisplay = _selectedImages.map((e) => e.displayBytes).toList();
-    final imagesToModel = _selectedImages.map((e) => e.rawBytes).toList();
-    final widths = _selectedImages.map((e) => e.width).toList();
-    final heights = _selectedImages.map((e) => e.height).toList();
+    if (text.trim().isEmpty) return;
+    if (_modelPath == null) return;
 
     setState(() {
       _messages.add(Message(
         text: text, 
         isUser: true,
-        images: imagesToDisplay.isNotEmpty ? imagesToDisplay : null,
       ));
       _controller.clear();
-      _selectedImages.clear();
       _messages.add(Message(text: "", isUser: false, isStreaming: true));
       _lastMetrics = null;
     });
@@ -299,10 +310,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final stream = await runLlamaStreaming(
         finalPrompt, 
         _modelPath!,
-        _projectorPath!,
-        imagesData: imagesToModel.isNotEmpty ? imagesToModel : null,
-        widths: widths.isNotEmpty ? widths : null,
-        heights: heights.isNotEmpty ? heights : null,
       );
       
       String fullResponse = "";
@@ -341,65 +348,47 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAF9F6),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: const Color(0xFFFAF9F6),
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: const Color(0xFF5A877E), borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF006D5B).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.shield_rounded, color: Color(0xFF006D5B), size: 24),
             ),
-            const SizedBox(width: 12),
-            const Text("CareNest", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 20, color: Color(0xFF1E293B))),
+            const SizedBox(width: 14),
+            const Text("CareNest"),
             const Spacer(),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: const Color(0xFFE0F2F1), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFB2DFDB))),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF006D5B).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(25),
+              ),
               child: Row(
                 children: const [
                   Icon(Icons.circle, color: Color(0xFF006D5B), size: 8),
-                  SizedBox(width: 6),
-                  Text("AI Doctor Online", style: TextStyle(color: Color(0xFF006D5B), fontSize: 12, fontWeight: FontWeight.w600)),
+                  SizedBox(width: 8),
+                  Text(
+                    "Secure AI",
+                    style: TextStyle(color: Color(0xFF006D5B), fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),
       body: Column(
         children: [
-          // Suggestions row
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                _buildSuggestionPill("I have a headache"),
-                _buildSuggestionPill("Check my symptoms"),
-                _buildSuggestionPill("Medication quick check"),
-              ],
-            ),
-          ),
           // TODAY Divider
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              children: [
-                const Expanded(child: Divider(color: Color(0xFFE2E8F0))),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text("TODAY", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade400, letterSpacing: 1.2)),
-                ),
-                const Expanded(child: Divider(color: Color(0xFFE2E8F0))),
-              ],
-            ),
-          ),
-          if (_isScanning) const LinearProgressIndicator(color: Color(0xFF006D5B), backgroundColor: Colors.white),
+          const Divider(color: Color(0xFFE2E8F0), height: 1),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
@@ -413,65 +402,38 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildSuggestionPill(String text) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
-    );
-  }
-
-
-
   Widget _buildUserMessage(Message msg) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          const SizedBox(width: 48), // Padding from left
           Flexible(
             child: Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFF193A36), // Dark Teal User bubble
-                borderRadius: BorderRadius.only(
+              decoration: BoxDecoration(
+                color: const Color(0xFF006D5B),
+                borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
                   bottomLeft: Radius.circular(20),
                   bottomRight: Radius.circular(4),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (msg.images != null && msg.images!.isNotEmpty)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: msg.images!.map((imgBytes) {
-                        return Container(
-                          height: 80,
-                          width: 80,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            image: DecorationImage(
-                              image: MemoryImage(imgBytes),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  if (msg.text.isNotEmpty)
-                    Text(msg.text, style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF006D5B).withOpacity(0.15),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
+              ),
+              child: Text(
+                msg.text,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
@@ -480,31 +442,72 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  String _cleanText(String text) {
+    String cleaned = text.trim();
+    // Strip ```markdown ... ``` or ``` ... ``` wrappers if they encapsulate the text
+    if (cleaned.startsWith('```markdown')) {
+      cleaned = cleaned.replaceFirst('```markdown', '').trim();
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.substring(0, cleaned.length - 3).trim();
+      }
+    } else if (cleaned.startsWith('```') && !cleaned.startsWith('```mermaid')) {
+      // Only strip generic backticks if they appear to be a wrapper (matching pair at start/end)
+      // but be careful not to strip if it's just a starting backtick for a different block
+      RegExp wrapper = RegExp(r'^```\w*\n?([\s\S]*)\n?```$', multiLine: true);
+      final match = wrapper.firstMatch(cleaned);
+      if (match != null) {
+        cleaned = match.group(1)?.trim() ?? cleaned;
+      }
+    }
+    return cleaned;
+  }
+
   List<Widget> _parseMessageWithMermaid(String text, bool isStreaming) {
     if (text.isEmpty && isStreaming) {
       return [const Text("●", style: TextStyle(color: Color(0xFF5A877E), fontSize: 18))];
     }
 
+    final String processedText = _cleanText(text);
+
+    final textTheme = Theme.of(context).textTheme;
     final style = MarkdownStyleSheet(
-      p: GoogleFonts.outfit(fontSize: 15, height: 1.6, color: const Color(0xFF334155)),
-      h1: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
-      h2: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
-      h3: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
-      listBullet: GoogleFonts.outfit(fontSize: 15, color: const Color(0xFF334155)),
-      blockquote: GoogleFonts.outfit(fontSize: 14, color: const Color(0xFF006D5B)),
-      tableHead: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
-      tableBody: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF475569)),
+      p: textTheme.bodyLarge,
+      strong: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF1E293B)),
+      em: textTheme.bodyLarge?.copyWith(fontStyle: FontStyle.italic, color: const Color(0xFF334155)),
+      h1: textTheme.headlineSmall?.copyWith(color: const Color(0xFF006D5B), fontWeight: FontWeight.w700),
+      h1Padding: const EdgeInsets.only(top: 24, bottom: 12),
+      h2: textTheme.titleLarge?.copyWith(color: const Color(0xFF1E293B), fontWeight: FontWeight.w600),
+      h2Padding: const EdgeInsets.only(top: 20, bottom: 10),
+      h3: textTheme.titleMedium?.copyWith(color: const Color(0xFF475569), fontWeight: FontWeight.w600),
+      h3Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      listBullet: textTheme.bodyLarge?.copyWith(color: const Color(0xFF006D5B)),
+      blockquote: textTheme.bodyMedium?.copyWith(color: const Color(0xFF006D5B), fontStyle: FontStyle.italic),
+      tableHead: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF1E293B)),
+      tableBody: textTheme.bodyMedium,
+      code: GoogleFonts.firaCode(fontSize: 13, backgroundColor: const Color(0xFFF1F5F9), color: const Color(0xFF006D5B)),
+      codeblockDecoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      pPadding: const EdgeInsets.only(bottom: 12),
+      blockSpacing: 16,
+      listIndent: 28,
+      listBulletPadding: const EdgeInsets.only(right: 12),
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(top: BorderSide(color: const Color(0xFFCBD5E1), width: 1.0)),
+      ),
     );
 
-    final List<Widget> widgets = [];
-    final RegExp exp = RegExp(r'```mermaid\n([\s\S]*?)(```|$)');
-    final matches = exp.allMatches(text);
+    final List<Widget> finalWidgets = [];
+    final RegExp exp = RegExp(r'```mermaid\s*\n?([\s\S]*?)(```|$)');
+    final matches = exp.allMatches(processedText);
     
     int lastEnd = 0;
     for (final match in matches) {
       if (match.start > lastEnd) {
-        widgets.add(MarkdownBody(
-          data: text.substring(lastEnd, match.start),
+        finalWidgets.add(MarkdownBody(
+          data: processedText.substring(lastEnd, match.start),
           extensionSet: md.ExtensionSet.gitHubFlavored,
           builders: {
             'table': CustomTableBuilder(),
@@ -515,27 +518,94 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       
       final mermaidCode = match.group(1) ?? '';
-      widgets.add(Container(
-        margin: const EdgeInsets.symmetric(vertical: 20),
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: MermaidDiagram(code: mermaidCode.trim()),
-        ),
-      ));
+      final isClosed = match.group(2) == '```';
+      String safeMermaid = _sanitizeMermaid(mermaidCode);
+      
+      if (isStreaming && !isClosed) {
+        // Show a placeholder while the diagram is still being typed out
+        finalWidgets.add(
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAF9F6), // Match Canvas
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF006D5B)),
+                ),
+                const SizedBox(width: 16),
+                Text(
+                  "Generating Clinical Path...",
+                  style: GoogleFonts.outfit(
+                    color: const Color(0xFF006D5B),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        // Only attempt to render the actual Mermaid diagram if it's closed (or stream finished)
+        if (safeMermaid.isNotEmpty && safeMermaid.length > 20) {
+          const mermaidStyle = MermaidStyle(
+            backgroundColor: 0xFFFAF9F6, // Match Canvas
+            defaultNodeStyle: NodeStyle(
+              fillColor: 0xFFE6F4F1,    
+              strokeColor: 0xFF006D5B,  
+              textColor: 0xFF1E293B,    
+            ),
+            defaultEdgeStyle: EdgeStyle(strokeColor: 0xFF006D5B),
+            nodeSpacingX: 50,
+            nodeSpacingY: 60,
+            padding: 20,
+          );
+
+          finalWidgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final availableWidth = constraints.maxWidth > 0 ? constraints.maxWidth : MediaQuery.of(context).size.width - 40;
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: 100,
+                      maxWidth: availableWidth,
+                    ),
+                    child: MermaidDiagram(
+                      code: safeMermaid,
+                      style: mermaidStyle,
+                      width: availableWidth,
+                      errorBuilder: (context, error) => Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text("Clinic Analysis Rendering... ($error)", style: const TextStyle(color: Colors.red, fontSize: 10)),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+      }
       
       lastEnd = match.end;
     }
     
-    if (lastEnd < text.length) {
-      widgets.add(MarkdownBody(
-        data: text.substring(lastEnd),
+    if (lastEnd < processedText.length) {
+      finalWidgets.add(MarkdownBody(
+        data: processedText.substring(lastEnd),
         extensionSet: md.ExtensionSet.gitHubFlavored,
         builders: {
           'table': CustomTableBuilder(),
@@ -545,49 +615,74 @@ class _ChatScreenState extends State<ChatScreen> {
       ));
     }
     
-    return widgets;
+    return finalWidgets;
+  }
+
+  String _sanitizeMermaid(String code) {
+    String trimmed = code.trim();
+    if (trimmed.isEmpty) return "";
+    
+    // 1. Ensure flowchart TD header
+    if (!trimmed.toLowerCase().startsWith('graph') && !trimmed.toLowerCase().startsWith('flowchart')) {
+      trimmed = "flowchart TD\n$trimmed";
+    }
+
+    List<String> lines = trimmed.split('\n');
+    List<String> sanitizedLines = [];
+    int nodeCounter = 1;
+    Map<String, String> labelToId = {};
+
+    for (var line in lines) {
+      String l = line.trim();
+      if (l.isEmpty || l.toLowerCase().startsWith('flowchart') || l.toLowerCase().startsWith('graph')) {
+        sanitizedLines.add(l);
+        continue;
+      }
+
+      // Handle raw [Text] --> [More Text] which LLMs like to output but crashes this library
+      // We look for any [bracketed text] and ensure it has an ID prefix
+      l = l.replaceAllMapped(RegExp(r'(\s|^)\[([^\]]+)\]'), (match) {
+        String label = match.group(2)!;
+        if (!labelToId.containsKey(label)) {
+          labelToId[label] = "n${nodeCounter++}";
+        }
+        return "${match.group(1)}${labelToId[label]}[$label]";
+      });
+
+      // Handle IDs with spaces like "Step 1[Text]" which also crashes
+      l = l.replaceAllMapped(RegExp(r'([\w\s]+)\[([^\]]+)\]'), (match) {
+        String idPart = match.group(1)!.trim().replaceAll(' ', '_');
+        String labelPart = match.group(2)!;
+        return "$idPart[$labelPart]";
+      });
+
+      // Strip forbidden shapes {} and () for vertical clinical path
+      l = l.replaceAll('{', '[').replaceAll('}', ']').replaceAll('(', '[').replaceAll(')', ']');
+      
+      sanitizedLines.add(l);
+    }
+
+    return sanitizedLines.join('\n');
   }
 
   Widget _buildAssistantMessage(Message msg) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 32), // More space between turns
-      child: Row(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            margin: const EdgeInsets.only(top: 4),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(6),
+          if (!msg.isStreaming || msg.text.isNotEmpty)
+            ..._parseMessageWithMermaid(msg.text, msg.isStreaming),
+          if (msg.isStreaming && msg.text.isEmpty)
+            _buildLoadingWidget(),
+          if (msg.metrics != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                "${(msg.metrics!['tps'] as double).toStringAsFixed(1)} t/s",
+                style: const TextStyle(fontSize: 9, color: Color(0xFF94A3B8)),
+              ),
             ),
-            child: const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF5A877E)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!msg.isStreaming || msg.text.isNotEmpty)
-                  ..._parseMessageWithMermaid(msg.text, msg.isStreaming),
-                if (msg.isStreaming && msg.text.isEmpty)
-                  _buildLoadingWidget(),
-                if (msg.metrics != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      "TTFT: ${(msg.metrics!['ttft'] as double).toStringAsFixed(0)}ms  •  ${(msg.metrics!['tps'] as double).toStringAsFixed(1)} tokens/sec",
-                      style: TextStyle(
-                        fontSize: 9, 
-                        fontWeight: FontWeight.w700, 
-                        color: Colors.grey.shade400,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -621,173 +716,48 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildAttachmentStrip() {
-    if (_selectedImages.isEmpty) return const SizedBox.shrink();
-    
-    return Container(
-      height: 90,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(
-        color: Colors.transparent,
-      ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _selectedImages.length,
-        itemBuilder: (context, index) {
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                margin: const EdgeInsets.only(right: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  image: DecorationImage(
-                    image: MemoryImage(_selectedImages[index].displayBytes),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: -6,
-                right: 6,
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedImages.removeAt(index);
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.close, size: 14, color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildInputArea() {
     return Container(
-      margin: const EdgeInsets.only(left: 16, right: 16, bottom: 24, top: 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(color: Colors.grey.shade200, width: 1.5),
+        color: Colors.white.withOpacity(0.9),
       ),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          _buildAttachmentStrip(),
-          Container(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-            child: SafeArea(
-              top: false,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  IconButton(
-                    onPressed: _showAttachmentOptions,
-                    icon: const Icon(Icons.add_circle_outline, color: Color(0xFF006D5B), size: 28),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
-                      minLines: 1,
-                      maxLines: 5,
-                      style: const TextStyle(fontSize: 16),
-                      decoration: const InputDecoration(
-                        hintText: "Message CareNest...",
-                        filled: false,
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _handleSend(_controller.text),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 4, right: 4),
-                      decoration: const BoxDecoration(color: Color(0xFF006D5B), shape: BoxShape.circle),
-                      child: const Icon(Icons.arrow_upward, color: Colors.white, size: 20),
-                    ),
-                  ),
-                ],
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
+              child: TextField(
+                controller: _controller,
+                keyboardType: TextInputType.multiline,
+                minLines: 1,
+                maxLines: 5,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 16),
+                decoration: const InputDecoration(
+                  hintText: "Ask CareNest...",
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w400),
+                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () => _handleSend(_controller.text),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: const BoxDecoration(color: Color(0xFF006D5B), shape: BoxShape.circle),
+              child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 24),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showAttachmentOptions() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildAttachmentOption(Icons.camera_alt, "Camera", () {
-                  Navigator.pop(context);
-                  _handleImagePick(ImageSource.camera);
-                }),
-                _buildAttachmentOption(Icons.photo_library, "Gallery", () {
-                  Navigator.pop(context);
-                  _handleImagePick(ImageSource.gallery);
-                }),
-              ],
-            ),
-          ),
-        );
-      }
-    );
-  }
-
-  Widget _buildAttachmentOption(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFFE0F2F1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: const Color(0xFF006D5B), size: 30),
-            ),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ],
-        ),
       ),
     );
   }
