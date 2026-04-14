@@ -28,7 +28,9 @@ CareNest rejects the standard "chat-bubble" interface. Instead, it treats every 
 To ensure a stable experience, please note the following hardware requirements:
 
 *   **Memory**: **8GB RAM is strictly required**. 
-*   **Stability Note**: Devices with less than 8GB of RAM, or those with aggressive background memory management, may experience application crashes immediately after the first token is generated (Post-TTFT). We are actively investigating further memory hardening for 6GB devices.
+*   **Stability Note**: Devices with less than 8GB of RAM, or those with aggressive background memory management, may experience application crashes immediately after the first token is generated (Post-TTFT).
+*   **Android Resource Management**: Due to the high memory pressure during local inference, some Android OS variants (e.g., MIUI, ColorOS) may terminate the application to conserve battery or system resources.
+*   **Optimization Tip**: For the best experience, we recommend closing high-memory background apps and disabling "Battery Optimization" for CareNest in your system settings.
 *   **Storage**: Approx. 3GB - 5GB for the initial model download.
 
 ---

@@ -26,3 +26,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Hardware Requirements
 - **Recommended**: 8GB+ RAM. 
 - **Minimum**: Devices with <8GB RAM may experience instability during the generation phase.
+- **Android Support**: Certain OS variants (MIUI, ColorOS, etc.) may terminate the app during high-memory inference spikes to save battery. User-level "Battery Optimization" exclusion is recommended.
