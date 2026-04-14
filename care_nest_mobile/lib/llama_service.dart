@@ -72,12 +72,18 @@ class LlamaService {
   }
 
   // Generates next token string. Returns null if EOG reached.
+  // Generates next token string. Returns null if EOG reached.
   String? getNextToken() {
-    final ptr = generateToken();
-    if (ptr == nullptr) return null;
-    
-    final token = ptr.toDartString();
-    freeResult(ptr);
-    return token;
+    try {
+      final ptr = generateToken();
+      if (ptr == nullptr) return null;
+      
+      final String token = ptr.toDartString();
+      freeResult(ptr);
+      return token;
+    } catch (e) {
+      // Return a safe placeholder if native encoding fails
+      return " ";
+    }
   }
 }

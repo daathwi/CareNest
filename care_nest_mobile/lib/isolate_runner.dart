@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:isolate';
 import 'llama_service.dart';
 
@@ -23,125 +24,185 @@ class InferenceMetrics {
   };
 }
 
-// The system prompt is SEPARATED from the user message.
-// It gets cached in the KV cache once, and never re-processed.
-const String _systemPrompt =
-    "<start_of_turn>user\n"
-    "You are CareNest, a helpful and precise medical assistant. Respond in Markdown.\n"
-    "1. Use standard Markdown formatting with headers, bullet points, bold text, and italics where appropriate.\n"
-    "2. FLOWCHARTS: For any step-by-step process, include a Mermaid diagram. ALWAYS wrap it in ```mermaid ... ```. Use `flowchart TD`.\n"
-    "   CRITICAL NODE RULES - follow exactly:\n"
-    "   - Nodes MUST have a unique ID followed by a label in square brackets: S1[Clinical Step]\n"
-    "   - NEVER omit the ID: WRONG: [Patient presents]; CORRECT: P1[Patient presents]\n"
-    "   - NEVER use curly braces {} or round brackets ().\n"
-    "   - Connections are ONLY top-to-bottom vertical: S1 --> S2 --> S3\n"
-    "   - NEVER branch left or right. Only one path, straight down.\n"
-    "   - CORNER CASE: Ensure IDs have no spaces. Use CamelCase or underscores for IDs.\n"
-    "   CORRECT example: Init[Patient presents] --> Assessment[Assess symptoms] --> Labs[Run blood tests] --> Dx[Diagnose condition]\n"
-    "3. TABLES: For comparisons, use Markdown tables. Keep content concise per cell.\n"
-    "4. PRECAUTIONS: List urgent safety points with ⚠️.\n"
-    "Output raw Markdown only. ALWAYS use ID[Label] for flowchart nodes. NEVER branch horizontally.<end_of_turn>\n\n";
+class LlamaIsolateRunner {
+  static LlamaIsolateRunner? _instance;
+  Isolate? _isolate;
+  SendPort? _commandPort;
+  final StreamController<dynamic> _responseController = StreamController<dynamic>.broadcast();
+  bool _isInitialized = false;
 
-Future<Stream<dynamic>> runLlamaStreaming(
-  String prompt,
-  String modelPath,
-) async {
-  final receivePort = ReceivePort();
+  LlamaIsolateRunner._();
+  factory LlamaIsolateRunner() => _instance ??= LlamaIsolateRunner._();
 
-  await Isolate.spawn(_entry, {
-    "prompt": prompt,
-    "modelPath": modelPath,
-    "sendPort": receivePort.sendPort,
-  });
+  Stream<dynamic> get responses => _responseController.stream;
 
-  bool isFirstToken = true;
+  Future<void> init(String modelPath) async {
+    if (_isInitialized) return;
 
-  return receivePort
-      .map((message) {
-        if (message is String) {
-          if (message == "___DONE___") {
-            receivePort.close();
-            return null;
+    final receivePort = ReceivePort();
+    final setupCompleter = Completer<void>();
+
+    _isolate = await Isolate.spawn(_isolateEntry, receivePort.sendPort);
+    
+    receivePort.listen((message) {
+      if (_commandPort == null && message is SendPort) {
+        _commandPort = message;
+        setupCompleter.complete();
+        return;
+      }
+      
+      if (message is String && message == "___IDLE___") {
+        return;
+      }
+      _responseController.add(message);
+    });
+
+    await setupCompleter.future;
+
+    // Send the load command
+    _commandPort!.send({"cmd": "load", "modelPath": modelPath});
+    _isInitialized = true;
+  }
+
+  void stop() {
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+    _commandPort = null;
+    _isInitialized = false;
+  }
+
+  bool _isBusy = false;
+  bool get isBusy => _isBusy;
+
+  void generate(String prompt) {
+    if (_isBusy) return;
+    _isBusy = true;
+    _commandPort?.send({"cmd": "generate", "prompt": prompt});
+  }
+
+  static void _isolateEntry(SendPort mainSendPort) {
+    final receivePort = ReceivePort();
+    mainSendPort.send(receivePort.sendPort);
+
+    LlamaService? llama;
+    String? currentModelPath;
+
+    receivePort.listen((message) {
+      final cmd = message["cmd"];
+      
+      if (cmd == "load") {
+        final path = message["modelPath"];
+        if (llama != null && currentModelPath == path) return;
+        
+        llama = LlamaService();
+        llama!.loadModel(path);
+        currentModelPath = path;
+        
+        // Cache system prompt immediately after load
+        llama!.warmupSystemPrompt(_systemPrompt);
+        mainSendPort.send("___IDLE___");
+      } 
+      else if (cmd == "generate") {
+        if (llama == null) return;
+        
+        final String userInput = message["prompt"];
+        final String userPrompt = "$userInput<end_of_turn>\n<start_of_turn>model\n";
+        
+        final overallWatch = Stopwatch()..start();
+        final prefillWatch = Stopwatch()..start();
+
+        try {
+          if (!llama!.setPrompt(userPrompt)) {
+            mainSendPort.send("Error: Failed to process prompt.");
+            mainSendPort.send("___DONE___");
+            return;
           }
 
-          String filtered = message
-              .replaceAll("<end_of_turn>", "")
-              .replaceAll("<start_of_turn>", "");
+          double? ttft;
+          int tokenCount = 0;
+          final generationWatch = Stopwatch();
 
-          if (isFirstToken) {
-            String cleaned = filtered.trimLeft();
-            if (cleaned.isNotEmpty) {
-              isFirstToken = false;
-              return cleaned;
+          for (int i = 0; i < 1024; i++) {
+            final token = llama!.getNextToken();
+            if (token == null) break;
+
+            if (tokenCount == 0) {
+              ttft = prefillWatch.elapsedMilliseconds.toDouble();
+              generationWatch.start();
             }
-            return null;
+
+            mainSendPort.send(token);
+            tokenCount++;
           }
-          return filtered;
+
+          generationWatch.stop();
+          overallWatch.stop();
+
+          final metrics = InferenceMetrics(
+            ttft: ttft ?? 0.0,
+            tps: tokenCount / (generationWatch.elapsedMilliseconds / 1000.0),
+            totalTokens: tokenCount,
+            totalTime: overallWatch.elapsedMilliseconds.toDouble(),
+          );
+
+          mainSendPort.send(metrics.toMap());
+          mainSendPort.send("___DONE___");
+          mainSendPort.send("___IDLE___");
+        } catch (e) {
+          mainSendPort.send("Error: $e");
+          mainSendPort.send("___DONE___");
+          mainSendPort.send("___IDLE___");
         }
-        return message;
-      })
-      .where((msg) => msg != null);
+      }
+    });
+  }
 }
 
-void _entry(Map args) {
-  final String userInput = args["prompt"];
-  final String modelPath = args["modelPath"];
-  final SendPort sendPort = args["sendPort"];
+const String _systemPrompt = 
+    "<start_of_turn>user\n"
+    "You are CareNest, a precise medical diagnostic reporter. Your goal is to produce clinical-grade documentation.\n"
+    "STRICT UI RULES:\n"
+    "1. FLOWCHARTS: For every procedure or symptom path, generate a Mermaid diagram. \n"
+    "   - ALWAYS use `flowchart TD`.\n"
+    "   - NODES: Every node MUST be formatted as `ID[Long Descriptive Clinical Label]`. \n"
+    "   - ID: Use descriptive CamelCase IDs (e.g. PtAssessment, LabResults). NEVER use single letters.\n"
+    "   - PATHS: Create ONLY linear, strictly vertical paths: S1[...] --> S2[...] --> S3[...]\n"
+    "   - NO HORIZONTAL BRANCHING: If multiple options exist, list them in a vertical sequence or use multiple flowcharts.\n"
+    "2. TABLES: Use Markdown tables for comparing medications, symptoms, or reference values.\n"
+    "3. FORMATTING: Use H2 and H3 headers for clinical sections. Use ⚠️ for critical safety warnings.\n"
+    "Output raw Markdown only. Ensure nodes are vertical and labels are descriptive.<end_of_turn>\n\n";
 
-  // The user message is the ONLY thing that gets prefilled each turn.
-  // The system prompt is already cached in the KV cache.
-  final String userPrompt =
-      "$userInput<end_of_turn>\n"
-      "<start_of_turn>model\n";
+// Compatibility helper to keep main.dart working for now
+Future<Stream<dynamic>> runLlamaStreaming(String prompt, String modelPath) async {
+  final runner = LlamaIsolateRunner();
+  await runner.init(modelPath);
+  
+  final controller = StreamController<dynamic>();
+  StreamSubscription? subscription;
+  
+  subscription = runner.responses.listen((msg) {
+    if (controller.isClosed) return; // Safety check
 
-  final overallWatch = Stopwatch()..start();
-  final prefillWatch = Stopwatch()..start();
-
-  try {
-    final llama = LlamaService();
-    llama.loadModel(modelPath);
-
-    // Cache system prompt in KV once (no-op if already cached)
-    llama.warmupSystemPrompt(_systemPrompt);
-
-    // Only the user message gets prefilled — system prompt KV is reused
-    if (!llama.setPrompt(userPrompt)) {
-      sendPort.send("Error: Failed to process multimodal prompt.");
-      sendPort.send("___DONE___");
-      return;
-    }
-
-    double? ttft;
-    int tokenCount = 0;
-    final generationWatch = Stopwatch();
-
-    for (int i = 0; i < 1024; i++) {
-      final token = llama.getNextToken();
-      if (token == null) break;
-
-      if (tokenCount == 0) {
-        ttft = prefillWatch.elapsedMilliseconds.toDouble();
-        generationWatch.start();
+    if (msg is String) {
+      if (msg == "___DONE___") {
+        subscription?.cancel();
+        runner._isBusy = false;
+        controller.close();
+      } else {
+        String filtered = msg.replaceAll("<end_of_turn>", "").replaceAll("<start_of_turn>", "");
+        controller.add(filtered);
       }
-
-      sendPort.send(token);
-      tokenCount++;
+    } else {
+      controller.add(msg);
     }
+  }, onError: (e) {
+    if (!controller.isClosed) controller.addError(e);
+    subscription?.cancel();
+  }, onDone: () {
+    if (!controller.isClosed) controller.close();
+  });
 
-    generationWatch.stop();
-    overallWatch.stop();
+  runner.generate(prompt);
 
-    final metrics = InferenceMetrics(
-      ttft: ttft ?? 0.0,
-      tps: tokenCount / (generationWatch.elapsedMilliseconds / 1000.0),
-      totalTokens: tokenCount,
-      totalTime: overallWatch.elapsedMilliseconds.toDouble(),
-    );
-
-    sendPort.send(metrics.toMap());
-    sendPort.send("___DONE___");
-  } catch (e) {
-    sendPort.send("Error: $e");
-    sendPort.send("___DONE___");
-  }
+  return controller.stream;
 }

@@ -622,41 +622,39 @@ class _ChatScreenState extends State<ChatScreen> {
     String trimmed = code.trim();
     if (trimmed.isEmpty) return "";
     
-    // 1. Ensure flowchart TD header
-    if (!trimmed.toLowerCase().startsWith('graph') && !trimmed.toLowerCase().startsWith('flowchart')) {
+    // 1. Force High-Fidelity Vertical Flowchart Header
+    if (!trimmed.toLowerCase().startsWith('flowchart td')) {
+      // Remove any existing graph/flowchart headers to avoid duplicates
+      trimmed = trimmed.replaceFirst(RegExp(r'^(graph|flowchart)\s+\w+', caseSensitive: false), '');
       trimmed = "flowchart TD\n$trimmed";
     }
 
     List<String> lines = trimmed.split('\n');
     List<String> sanitizedLines = [];
     int nodeCounter = 1;
-    Map<String, String> labelToId = {};
 
     for (var line in lines) {
       String l = line.trim();
-      if (l.isEmpty || l.toLowerCase().startsWith('flowchart') || l.toLowerCase().startsWith('graph')) {
+      if (l.isEmpty || l.toLowerCase().startsWith('flowchart')) {
         sanitizedLines.add(l);
         continue;
       }
 
-      // Handle raw [Text] --> [More Text] which LLMs like to output but crashes this library
-      // We look for any [bracketed text] and ensure it has an ID prefix
-      l = l.replaceAllMapped(RegExp(r'(\s|^)\[([^\]]+)\]'), (match) {
+      // Convert horizontal/bidirectional arrows to vertical
+      l = l.replaceAll('<-->', '-->').replaceAll('<--', '-->');
+
+      // HEALING: Handle raw [Text] --> [More Text] (No IDs)
+      // Only prefix with a new ID if the node truly lacks one
+      l = l.replaceAllMapped(RegExp(r'(^|(?<=\s))(?<![\w\d])\[([^\]]+)\]'), (match) {
         String label = match.group(2)!;
-        if (!labelToId.containsKey(label)) {
-          labelToId[label] = "n${nodeCounter++}";
-        }
-        return "${match.group(1)}${labelToId[label]}[$label]";
+        String idSource = label.replaceAll(RegExp(r'\W'), '');
+        String id = idSource.isNotEmpty ? "N$idSource" : "Node$nodeCounter";
+        if (id.length > 20) id = id.substring(0, 20);
+        nodeCounter++;
+        return "${match.group(1)}$id[$label]";
       });
 
-      // Handle IDs with spaces like "Step 1[Text]" which also crashes
-      l = l.replaceAllMapped(RegExp(r'([\w\s]+)\[([^\]]+)\]'), (match) {
-        String idPart = match.group(1)!.trim().replaceAll(' ', '_');
-        String labelPart = match.group(2)!;
-        return "$idPart[$labelPart]";
-      });
-
-      // Strip forbidden shapes {} and () for vertical clinical path
+      // CLEANUP: Strip forbidden shapes for medical consistency
       l = l.replaceAll('{', '[').replaceAll('}', ']').replaceAll('(', '[').replaceAll(')', ']');
       
       sanitizedLines.add(l);
