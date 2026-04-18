@@ -10,7 +10,7 @@ CareNest rejects the "chat bubble" paradigm in favor of **investigative reportin
 
 ## 🚀 Key Features
 - **Local-First Inference**: Powered by a custom `llama.cpp` native FFI layer optimized for high-performance ARMv8-A processors.
-- **8GB RAM Requirement**: Engineered for devices with 8GB+ RAM to ensure stable local inference.
+- **6GB RAM Requirement**: Engineered for devices with 6GB+ RAM to ensure stable local inference.
 - **Clinical Dashboard**: A clean, full-width UI built for maximum readability and zero-distraction medical investigative work.
 - **Diagnostic Flowcharts**: Dynamic rendering of vertical Mermaid diagrams for visualizing clinical paths and symptom logic.
 - **Wide-Column Data**: Professional rendering of complex medical reference tables with horizontal scrolling and fixed-width columns.
@@ -39,7 +39,7 @@ Ensure your development environment meets these requirements:
 - **Flutter SDK**: `^3.11.4`
 - **Android NDK**: `25.x` or higher
 - **CMake**: `3.22.1`+ (for native compilation)
-- **Device**: Android device with **at least 8GB RAM** is strictly required for stable generation.
+- **Device**: Android device with **at least 6GB RAM** is strictly required for stable generation.
 - **Stability Note**: High memory spikes during inference can trigger the Android Low Memory Killer (LMK). We recommend disabling "Battery Optimization" for CareNest and closing background apps for the best performance.
 
 ### 2. Native Library Preparation
