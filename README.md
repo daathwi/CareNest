@@ -17,11 +17,18 @@ CareNest rejects the "chat bubble" paradigm in favor of **investigative reportin
 - **Privacy Core**: 100% offline generation. No health data ever leaves the device.
 
 ## 🛠️ Architecture
-The mobile application is split into a high-performance Dart UI and a hardened C++ native backend:
-- **`lib/`**: Flutter UI layer implementing the **Outfit** medical design system.
-- **`lib/llama_service.dart`**: FFI bridge to the native engine.
-- **`native/`**: Lightweight wrapper around `llama.cpp` (GGUF support).
 - **`android/`**: Configured to load optimized ARMv8-A / NEON instructions.
+
+## 📈 Performance Benchmarks
+
+CareNest is optimized for high-performance localized inference. Our benchmarks target the following metrics for the **Gemma 4 e2b** model:
+
+| Metric | Goal for Gemma 4 e2b | Why it matters |
+| :--- | :--- | :--- |
+| **Prompt Processing (pp)** | > 50 t/s | How fast the model "reads" the user's input. |
+| **Token Generation (tg)** | > 10–15 t/s | Needs to feel faster than a human can read. |
+| **Time to First Token (TTFT)** | < 800ms | Users in emergencies won't wait 5 seconds for a response. |
+| **Peak RAM Usage** | < 3.5 GB | Critical for preventing the mobile OS from killing your app. |
 
 ---
 

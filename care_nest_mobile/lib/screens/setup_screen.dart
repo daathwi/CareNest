@@ -1,10 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import '../services/download_service.dart';
 
 class SetupScreen extends StatefulWidget {
-  final VoidCallback onComplete;
-
+  final Function(String modelPath) onComplete;
   const SetupScreen({super.key, required this.onComplete});
 
   @override
@@ -13,8 +14,8 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   final DownloadService _downloadService = DownloadService();
-  double _progress = 0;
   bool _isDownloading = false;
+  double _progress = 0.0;
   String? _error;
 
   void _startDownload() async {
@@ -24,144 +25,109 @@ class _SetupScreenState extends State<SetupScreen> {
     });
 
     await _downloadService.downloadModel(
-      onProgress: (progress) {
-        setState(() {
-          _progress = progress;
-        });
-      },
-      onComplete: (mPath, pPath) {
-        widget.onComplete();
-      },
-      onError: (error) {
-        setState(() {
-          _error = error;
-          _isDownloading = false;
-        });
-      },
+      onProgress: (p) => setState(() => _progress = p),
+      onComplete: (m) => widget.onComplete(m),
+      onError: (e) => setState(() {
+        _error = e;
+        _isDownloading = false;
+      }),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
-      body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.dark,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 40.0),
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              const Spacer(),
               Container(
                 padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE0F2F1),
-                  shape: BoxShape.circle,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(32),
                 ),
-                child: const Icon(
-                  Icons.health_and_safety_rounded,
-                  size: 64,
-                  color: Color(0xFF006D5B),
-                ),
+                child: const Icon(Icons.emergency_outlined, 
+                  size: 64, color: Color(0xFFE11D48)),
               ),
               const SizedBox(height: 48),
-              const Text(
-                "Initializing\nCareNest Core",
+              Text(
+                "Initializing\nRescueNow Core",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF1E293B),
-                  fontSize: 36,
-                  fontWeight: FontWeight.w800,
-                  height: 1.15,
-                  letterSpacing: -1.0,
+                style: GoogleFonts.outfit(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1E293B),
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                "CareNest uses Gemma 4 to run a fully local AI medical assistant. No servers, no tracking. Everything happens privately on your device.",
+              Text(
+                "RescueNow uses Gemma-4 to run a fully local AI health assistant for ASHA workers. No internet needed. No tracking. Everything happens privately on your device.",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF64748B),
+                style: GoogleFonts.inter(
                   fontSize: 16,
-                  height: 1.6,
-                  fontWeight: FontWeight.w400,
+                  color: const Color(0xFF64748B),
+                  height: 1.5,
                 ),
               ),
-              const SizedBox(height: 48),
+              const Spacer(),
               if (_isDownloading) ...[
-                const SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF006D5B)),
-                    strokeWidth: 4,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  "DOWNLOADING MODEL: ${(_progress * 100).toStringAsFixed(1)}%",
-                  style: const TextStyle(
-                    color: Color(0xFF006D5B),
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(8),
                   child: LinearProgressIndicator(
-                    value: _progress,
-                    minHeight: 6,
-                    backgroundColor: const Color(0xFFE2E8F0),
-                    color: const Color(0xFF006D5B),
-                  ),
-                ),
-              ] else ...[
-                ElevatedButton(
-                  onPressed: _startDownload,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF006D5B),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 60),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text(
-                    "Start Download",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    value: _progress > 0.001 ? _progress : null,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    color: const Color(0xFFE11D48),
+                    minHeight: 12,
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => SystemNavigator.pop(),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF64748B),
-                    minimumSize: const Size(double.infinity, 60),
+                Text(
+                  _progress > 0.001 
+                      ? "DOWNLOADING MODEL: ${(_progress * 100).toStringAsFixed(1)}%" 
+                      : "CONNECTING TO SECURE SERVER...",
+                  style: GoogleFonts.jetBrainsMono(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ] else ...[
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: Text(_error!, 
+                      style: const TextStyle(color: Colors.red)),
+                  ),
+                ElevatedButton(
+                  onPressed: _startDownload,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE11D48),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 64),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
+                    elevation: 0,
                   ),
-                  child: const Text("Exit Setup", style: TextStyle(fontSize: 16)),
+                  child: Text("Start Download", 
+                    style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
               ],
-              const SizedBox(height: 48),
-              const Divider(color: Color(0xFFCBD5E1)),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.info_outline, size: 20, color: Color(0xFF94A3B8)),
+                  const Icon(Icons.security, size: 20, color: Color(0xFF94A3B8)),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      "One-time setup (requires internet). After this, you’re 100% offline & private.",
-                      style: TextStyle(
-                        color: Color(0xFF94A3B8),
+                      "One-time setup (requires internet). After this, RescueNow is 100% offline & private for field visits.",
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF94A3B8),
                         fontSize: 14,
                         height: 1.5,
                       ),
@@ -169,15 +135,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   ),
                 ],
               ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 24),
-                  child: Text(
-                    "Network Error: $_error",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                ),
+              const SizedBox(height: 32),
             ],
           ),
         ),

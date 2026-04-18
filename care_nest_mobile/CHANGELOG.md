@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **Privacy-First Core**: 100% offline operation. No patient data or logs leave the device.
 
+### 📈 Performance Benchmarks (Gemma 4 e2b)
+- **Prompt Processing**: > 50 t/s
+- **Token Generation**: > 10–15 t/s
+- **TTFT**: < 800ms
+- **Peak RAM**: < 3.5 GB
+
 ---
 
 ### Hardware Requirements

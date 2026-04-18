@@ -66,5 +66,21 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>CareNest needs access to your camera to analyze medical scenarios.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CareNest needs access to your microphone for voice queries.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>CareNest uses speech recognition to transcribe your questions.</string>
 </dict>
 </plist>
