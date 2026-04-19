@@ -10,6 +10,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/setup_screen.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import 'services/voice_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -531,10 +532,14 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingModel = true;
   Map<String, dynamic>? _lastMetrics;
   StreamSubscription? _inferenceSubscription;
+  
+  final VoiceService _voiceService = VoiceService();
+  bool _isListening = false;
 
   @override
   void initState() {
     super.initState();
+    _voiceService.init();
     _initModel();
   }
 
@@ -603,6 +608,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _lastMetrics = null;
     });
     _scrollToBottom();
+    _voiceService.resetTurn();
+    
     try {
       final stream = await runLlamaStreaming(text, _modelPath!);
       String fullResponse = "";
@@ -615,6 +622,9 @@ class _ChatScreenState extends State<ChatScreen> {
               _messages.last = Message(text: fullResponse, isUser: false, isStreaming: true);
             });
             _scrollToBottom();
+            
+            // Real-time voice feedback for checklist items
+            _voiceService.processStreamingText(fullResponse);
           } else if (event is Map<String, dynamic>) {
             setState(() {
               _lastMetrics = event;
@@ -625,11 +635,32 @@ class _ChatScreenState extends State<ChatScreen> {
         onDone: () {
           if (!mounted) return;
           setState(() => _messages.last.isStreaming = false);
+          // Final flush to catch the last checklist item if no trailing newline
+          _voiceService.processStreamingText(fullResponse, isFinal: true);
         },
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _messages.last = Message(text: "Error: $e", isUser: false));
+    }
+  }
+
+  void _listen() async {
+    if (!_isListening) {
+      final String currentText = _controller.text;
+      final locale = _voiceService.getLocaleForText(currentText);
+      _voiceService.stopSpeaking(); // Ensure AI stops talking when user starts
+      await _voiceService.startListening(
+        localeId: locale,
+        onResult: (val) => setState(() => _controller.text = val),
+      );
+      setState(() => _isListening = true);
+    } else {
+      await _voiceService.stopListening();
+      setState(() => _isListening = false);
+      if (_controller.text.isNotEmpty) {
+        _handleSend(_controller.text);
+      }
     }
   }
 
@@ -1114,6 +1145,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -1123,44 +1155,78 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+          // 1. Panorama Text Area
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: TextField(
+              controller: _controller,
+              minLines: 3,
+              maxLines: 8,
+              style: const TextStyle(fontSize: 16, height: 1.5),
+              decoration: InputDecoration(
+                hintText: "Enter clinical observation...",
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.all(16),
+                suffixIcon: _controller.text.isNotEmpty 
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 20, color: Color(0xFF94A3B8)),
+                      onPressed: () => setState(() => _controller.clear()),
+                    ) 
+                  : null,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _controller,
-                minLines: 1,
-                maxLines: 5,
-                style: const TextStyle(fontSize: 16),
-                decoration: const InputDecoration(
-                  hintText: "Enter clinical observation...",
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
+              onChanged: (_) => setState(() {}),
             ),
           ),
-          const SizedBox(width: 12),
-          Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF006D5B),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              icon: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 24,
+          const SizedBox(height: 12),
+          
+          // 2. Surgical Action Row
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _listen,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isListening ? Colors.red : const Color(0xFF006D5B),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  icon: Icon(
+                    _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                    size: 22,
+                  ),
+                  label: Text(
+                    _isListening ? "Stop Recording" : "Start Recording",
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
               ),
-              onPressed: () => _handleSend(_controller.text),
-            ),
+              const SizedBox(width: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.send_rounded,
+                    color: Color(0xFF006D5B),
+                    size: 28,
+                  ),
+                  onPressed: () => _handleSend(_controller.text),
+                  padding: const EdgeInsets.all(14),
+                ),
+              ),
+            ],
           ),
         ],
       ),

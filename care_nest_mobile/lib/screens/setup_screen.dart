@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import '../services/download_service.dart';
+import '../services/voice_service.dart';
 
 class SetupScreen extends StatefulWidget {
   final Function(String modelPath) onComplete;
@@ -14,9 +15,27 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   final DownloadService _downloadService = DownloadService();
+  final VoiceService _voiceService = VoiceService();
+  
   bool _isDownloading = false;
+  bool _voiceReady = false;
   double _progress = 0.0;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkVoiceHealth();
+  }
+
+  void _checkVoiceHealth() async {
+    try {
+      await _voiceService.init();
+      setState(() => _voiceReady = true);
+    } catch (e) {
+      print("RescueNow: Voice Initialization Warning - $e");
+    }
+  }
 
   void _startDownload() async {
     setState(() {
@@ -74,6 +93,8 @@ class _SetupScreenState extends State<SetupScreen> {
                   height: 1.5,
                 ),
               ),
+              const SizedBox(height: 32),
+              _buildVoiceIndicator(),
               const Spacer(),
               if (_isDownloading) ...[
                 ClipRRect(
@@ -139,6 +160,36 @@ class _SetupScreenState extends State<SetupScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: _voiceReady ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _voiceReady ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _voiceReady ? Icons.mic_rounded : Icons.mic_off_rounded,
+            color: _voiceReady ? Colors.green : Colors.orange,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _voiceReady ? "Offline Voice Protocol Ready" : "Checking Offline Voice Packs...",
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: _voiceReady ? Colors.green.shade800 : Colors.orange.shade800,
+            ),
+          ),
+        ],
       ),
     );
   }
