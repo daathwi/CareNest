@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'isolate_runner.dart';
-import 'services/download_service.dart';
 import 'services/download_service.dart';
 import 'package:flutter_mermaid/flutter_mermaid.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -19,7 +19,7 @@ void main() async {
   final downloadService = DownloadService();
   await downloadService.initialize();
   final isReady = await downloadService.isModelDownloaded();
-  
+
   if (isReady) {
     print("RescueNow: GGUF Model detected. Preparing for inference.");
   } else {
@@ -209,25 +209,25 @@ class HomeScreen extends StatelessWidget {
               backgroundColor: Colors.red.shade700,
               foregroundColor: Colors.white,
             ),
-              onPressed: () async {
-                Navigator.pop(context);
-                final mPath = await DownloadService().getModelPath();
-                if (await File(mPath).exists()) await File(mPath).delete();
+            onPressed: () async {
+              Navigator.pop(context);
+              final mPath = await DownloadService().getModelPath();
+              if (await File(mPath).exists()) await File(mPath).delete();
 
-                if (context.mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => SetupScreen(
-                        onComplete: (mPath) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const HomeScreen()),
-                          );
-                        },
-                      ),
+              if (context.mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => SetupScreen(
+                      onComplete: (mPath) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        );
+                      },
                     ),
-                  );
-                }
-              },
+                  ),
+                );
+              }
+            },
             child: const Text("Delete & Reset"),
           ),
         ],
@@ -530,6 +530,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _modelPath;
   bool _isLoadingModel = true;
   Map<String, dynamic>? _lastMetrics;
+  StreamSubscription? _inferenceSubscription;
 
   @override
   void initState() {
@@ -539,6 +540,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _inferenceSubscription?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     ClinicalIsolateRunner().stop();
@@ -553,7 +555,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoadingModel = false;
         _messages.add(
           Message(
-            text: "RescueNow active. Engine running in **Clinical CPU Mode** for maximum stability.",
+            text:
+                "RescueNow active. Engine running in **Clinical CPU Mode** for maximum stability.",
             isUser: false,
           ),
         );
@@ -583,30 +586,29 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleSend(String text) async {
     if (text.trim().isEmpty) return;
     if (_modelPath == null) {
-      print("RescueNow Error: Attempted to send prompt before model initialization.");
+      print(
+        "RescueNow Error: Attempted to send prompt before model initialization.",
+      );
       return;
     }
 
-    print("RescueNow: Incoming Clinical Observation: '${text.substring(0, text.length > 30 ? 30 : text.length)}...'");
+    print(
+      "RescueNow: Incoming Clinical Observation: '${text.substring(0, text.length > 30 ? 30 : text.length)}...'",
+    );
 
     setState(() {
-      _messages.add(Message(
-        text: text, 
-        isUser: true, 
-      ));
+      _messages.add(Message(text: text, isUser: true));
       _controller.clear();
       _messages.add(Message(text: "", isUser: false, isStreaming: true));
       _lastMetrics = null;
     });
     _scrollToBottom();
-
-    String finalPrompt = text;
-
     try {
-      final stream = await runLlamaStreaming(finalPrompt, _modelPath!);
+      final stream = await runLlamaStreaming(text, _modelPath!);
       String fullResponse = "";
-      stream.listen(
+      _inferenceSubscription = stream.listen(
         (event) {
+          if (!mounted) return;
           if (event is String) {
             setState(() {
               fullResponse += event;
@@ -620,11 +622,66 @@ class _ChatScreenState extends State<ChatScreen> {
             });
           }
         },
-        onDone: () => setState(() => _messages.last.isStreaming = false),
+        onDone: () {
+          if (!mounted) return;
+          setState(() => _messages.last.isStreaming = false);
+        },
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() => _messages.last = Message(text: "Error: $e", isUser: false));
     }
+  }
+
+  void _showEncouragementModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF006D5B).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF006D5B), size: 52),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              "Excellent Triage!",
+              style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "You have completed all actions in the protocol. Continue monitoring the patient's vitals closely.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Color(0xFF64748B), height: 1.5),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF006D5B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: const Text("Continue Monitoring", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -640,7 +697,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 color: const Color(0xFF006D5B).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.shield_rounded, color: Color(0xFF006D5B), size: 24),
+              child: const Icon(
+                Icons.shield_rounded,
+                color: Color(0xFF006D5B),
+                size: 24,
+              ),
             ),
             const SizedBox(width: 14),
             const Text("RescueNow"),
@@ -657,7 +718,9 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
-                return msg.isUser ? _buildUserMessage(msg) : _buildAssistantMessage(msg);
+                return msg.isUser
+                    ? _buildUserMessage(msg)
+                    : _buildAssistantMessage(msg);
               },
             ),
           ),
@@ -692,11 +755,23 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (msg.imagePath != null) ...[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.file(File(msg.imagePath!), height: 250, width: double.infinity, fit: BoxFit.cover),
+                      child: Image.file(
+                        File(msg.imagePath!),
+                        height: 250,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Text(msg.text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 16)),
+                  Text(
+                    msg.text,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 16,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -712,9 +787,11 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!msg.isStreaming || msg.text.isNotEmpty) ..._parseMessageWithMermaid(msg, msg.isStreaming),
+          if (!msg.isStreaming || msg.text.isNotEmpty)
+            ..._parseMessageWithMermaid(msg, msg.isStreaming),
           if (msg.isStreaming && msg.text.isEmpty) _buildLoadingWidget(),
-          if (msg.metrics != null && !msg.isStreaming) _buildPerformanceReport(msg.metrics!),
+          if (msg.metrics != null && !msg.isStreaming)
+            _buildPerformanceReport(msg.metrics!),
         ],
       ),
     );
@@ -722,35 +799,48 @@ class _ChatScreenState extends State<ChatScreen> {
 
   List<Widget> _parseMessageWithMermaid(Message msg, bool isStreaming) {
     final String text = msg.text;
-    if (text.isEmpty && isStreaming) return [const Text("●", style: TextStyle(color: Color(0xFF5A877E), fontSize: 18))];
-    
+    if (text.isEmpty && isStreaming)
+      return [
+        const Text(
+          "●",
+          style: TextStyle(color: Color(0xFF5A877E), fontSize: 18),
+        ),
+      ];
+
     final style = MarkdownStyleSheet(
       p: Theme.of(context).textTheme.bodyLarge,
-      h1: Theme.of(context).textTheme.headlineSmall?.copyWith(color: const Color(0xFF006D5B), fontWeight: FontWeight.w700),
+      h1: Theme.of(context).textTheme.headlineSmall?.copyWith(
+        color: const Color(0xFF006D5B),
+        fontWeight: FontWeight.w700,
+      ),
       tableHead: const TextStyle(fontWeight: FontWeight.bold),
     );
 
     final List<Widget> finalWidgets = [];
-    
+
     // 1. Identify and extract INTERACTIVE CHECKLIST items
-    final checklistRegex = RegExp(r'^\s*-\s*\[([ xX])\]\s*(.*)$', multiLine: true);
+    final checklistRegex = RegExp(
+      r'^\s*-\s*\[([ xX])\]\s*(.*)$',
+      multiLine: true,
+    );
     final checklistMatches = checklistRegex.allMatches(text).toList();
-    
+
     if (checklistMatches.isNotEmpty) {
       final List<Widget> checklistTiles = [];
       final lines = text.split('\n');
-      
+
       for (int i = 0; i < checklistMatches.length; i++) {
         final match = checklistMatches[i];
         final isChecked = match.group(1)!.toLowerCase() == 'x';
         final content = match.group(2)!;
-        
+
         // Find the absolute line index for this specific match
         int absoluteLineIndex = -1;
         int currentOffset = 0;
         for (int l = 0; l < lines.length; l++) {
           final lineStart = text.indexOf(lines[l], currentOffset);
-          if (lineStart <= match.start && (lineStart + lines[l].length) >= match.end) {
+          if (lineStart <= match.start &&
+              (lineStart + lines[l].length) >= match.end) {
             absoluteLineIndex = l;
             break;
           }
@@ -762,14 +852,26 @@ class _ChatScreenState extends State<ChatScreen> {
             content: content,
             isChecked: isChecked,
             onToggle: () {
-              print("RescueNow: UI Checklist Interaction - Toggling absolute line: $absoluteLineIndex");
+              print(
+                "RescueNow: UI Checklist Interaction - Toggling absolute line: $absoluteLineIndex",
+              );
               if (absoluteLineIndex != -1) {
                 setState(() {
                   final currentLines = msg.text.split('\n');
                   final target = isChecked ? "[x]" : "[ ]";
                   final replacement = isChecked ? "[ ]" : "[x]";
-                  currentLines[absoluteLineIndex] = currentLines[absoluteLineIndex].replaceFirst(target, replacement);
+                  currentLines[absoluteLineIndex] =
+                      currentLines[absoluteLineIndex].replaceFirst(
+                        target,
+                        replacement,
+                      );
                   msg.text = currentLines.join('\n');
+                  
+                  // Check if all items are now ticked off
+                  final updatedText = msg.text;
+                  if (!updatedText.contains("[ ]")) {
+                    _showEncouragementModal();
+                  }
                 });
               }
             },
@@ -783,10 +885,16 @@ class _ChatScreenState extends State<ChatScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(children: checklistTiles),
-        )
+        ),
       );
       finalWidgets.add(const SizedBox(height: 24));
     }
@@ -804,11 +912,16 @@ class _ChatScreenState extends State<ChatScreen> {
       if (match.start > lastEnd) {
         final content = bodyText.substring(lastEnd, match.start);
         if (content.trim().isNotEmpty) {
-          finalWidgets.add(MarkdownBody(
-            data: content, 
-            builders: {'table': CustomTableBuilder(context), 'blockquote': CustomBlockquoteBuilder()}, 
-            styleSheet: style,
-          ));
+          finalWidgets.add(
+            MarkdownBody(
+              data: content,
+              builders: {
+                'table': CustomTableBuilder(context),
+                'blockquote': CustomBlockquoteBuilder(),
+              },
+              styleSheet: style,
+            ),
+          );
         }
       }
       final mermaidCode = match.group(1) ?? '';
@@ -822,11 +935,11 @@ class _ChatScreenState extends State<ChatScreen> {
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               child: MermaidDiagram(
-                code: _sanitizeMermaid(mermaidCode), 
-                style: MermaidStyle(backgroundColor: 0xFFFAF9F6)
+                code: _sanitizeMermaid(mermaidCode),
+                style: MermaidStyle(backgroundColor: 0xFFFAF9F6),
               ),
             ),
-          )
+          ),
         );
       }
       lastEnd = match.end;
@@ -836,21 +949,30 @@ class _ChatScreenState extends State<ChatScreen> {
       final content = bodyText.substring(lastEnd);
       if (content.trim().isNotEmpty) {
         finalWidgets.add(const SizedBox(height: 24));
-        finalWidgets.add(MarkdownBody(
-          data: content, 
-          builders: {'table': CustomTableBuilder(context), 'blockquote': CustomBlockquoteBuilder()}, 
-          styleSheet: style,
-        ));
+        finalWidgets.add(
+          MarkdownBody(
+            data: content,
+            builders: {
+              'table': CustomTableBuilder(context),
+              'blockquote': CustomBlockquoteBuilder(),
+            },
+            styleSheet: style,
+          ),
+        );
       }
     }
-    
+
     // Final spacing for readability
     finalWidgets.add(const SizedBox(height: 24));
 
     return finalWidgets;
   }
 
-  Widget _buildInteractiveCheckTile({required String content, required bool isChecked, required VoidCallback onToggle}) {
+  Widget _buildInteractiveCheckTile({
+    required String content,
+    required bool isChecked,
+    required VoidCallback onToggle,
+  }) {
     return InkWell(
       onTap: onToggle,
       borderRadius: BorderRadius.circular(16),
@@ -860,8 +982,12 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
-              isChecked ? Icons.task_alt_rounded : Icons.radio_button_unchecked_rounded,
-              color: isChecked ? const Color(0xFF006D5B) : const Color(0xFFCBD5E1),
+              isChecked
+                  ? Icons.task_alt_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: isChecked
+                  ? const Color(0xFF006D5B)
+                  : const Color(0xFFCBD5E1),
               size: 24,
             ),
             const SizedBox(width: 14),
@@ -870,7 +996,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 content,
                 style: TextStyle(
                   fontSize: 16,
-                  color: isChecked ? const Color(0xFF64748B) : const Color(0xFF1E293B),
+                  color: isChecked
+                      ? const Color(0xFF64748B)
+                      : const Color(0xFF1E293B),
                   decoration: isChecked ? TextDecoration.lineThrough : null,
                   fontWeight: isChecked ? FontWeight.normal : FontWeight.w600,
                   height: 1.4,
@@ -895,11 +1023,28 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Column(
         children: [
-          const SizedBox(height: 48, width: 48, child: CircularProgressIndicator(strokeWidth: 3, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF006D5B)))),
+          const SizedBox(
+            height: 48,
+            width: 48,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF006D5B)),
+            ),
+          ),
           const SizedBox(height: 16),
-          Text("Synthesizing Clinical Path...", style: GoogleFonts.outfit(color: const Color(0xFF006D5B), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+          Text(
+            "Synthesizing Clinical Path...",
+            style: GoogleFonts.outfit(
+              color: const Color(0xFF006D5B),
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text("Drafting secure local diagram", style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          const Text(
+            "Drafting secure local diagram",
+            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
         ],
       ),
     );
@@ -909,14 +1054,16 @@ class _ChatScreenState extends State<ChatScreen> {
     // Stop stripping ALL backticks. Only remove the specific 'markdown' wrapper if it exists at the start/end
     String t = text.trim();
     if (t.startsWith('```markdown')) t = t.replaceFirst('```markdown', '');
-    if (t.endsWith('```') && !t.contains('```mermaid')) t = t.substring(0, t.length - 3);
+    if (t.endsWith('```') && !t.contains('```mermaid'))
+      t = t.substring(0, t.length - 3);
     return t.trim();
   }
 
   String _sanitizeMermaid(String code) {
     String trimmed = code.trim();
     // Ensure all charts are vertical flowcharts for mobile readability
-    if (!trimmed.toLowerCase().contains('flowchart') && !trimmed.toLowerCase().contains('graph')) {
+    if (!trimmed.toLowerCase().contains('flowchart') &&
+        !trimmed.toLowerCase().contains('graph')) {
       trimmed = "flowchart TD\n$trimmed";
     }
     return trimmed;
@@ -924,7 +1071,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildPerformanceReport(Map<String, dynamic> metrics) {
     return ExpansionTile(
-      title: const Text("View performance", style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+      title: const Text(
+        "View performance",
+        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      ),
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
@@ -942,16 +1092,34 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _metric(String label, dynamic val) => Column(children: [Text(label, style: const TextStyle(fontSize: 10)), Text("${val?.toStringAsFixed(1)}", style: const TextStyle(fontWeight: FontWeight.bold))]);
+  Widget _metric(String label, dynamic val) => Column(
+    children: [
+      Text(label, style: const TextStyle(fontSize: 10)),
+      Text(
+        "${val?.toStringAsFixed(1)}",
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+    ],
+  );
 
-  Widget _buildLoadingWidget() => const Row(children: [CircularProgressIndicator(strokeWidth: 2), SizedBox(width: 12), Text("Analyzing...")]);
+  Widget _buildLoadingWidget() => const Row(
+    children: [
+      CircularProgressIndicator(strokeWidth: 2),
+      SizedBox(width: 12),
+      Text("Analyzing..."),
+    ],
+  );
 
   Widget _buildInputArea() {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2))
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 10,
+            offset: Offset(0, -2),
+          ),
         ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -986,7 +1154,11 @@ class _ChatScreenState extends State<ChatScreen> {
               shape: BoxShape.circle,
             ),
             child: IconButton(
-              icon: const Icon(Icons.send_rounded, color: Colors.white, size: 24),
+              icon: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
               onPressed: () => _handleSend(_controller.text),
             ),
           ),
